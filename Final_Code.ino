@@ -1,8 +1,10 @@
+// --- declaring libraries ---
 #include <Wire.h>
 #include <Servo.h>
 #include <Arduino.h>
 #include <NewPing.h>
 
+///IMU variables ---
 const int MPU_addr = 0x68;  // I2C address of the MPU-6050
 int16_t ax, ay, az, gx, gy, gz;
 unsigned long timer = 0;
@@ -12,7 +14,7 @@ float yaw = 0;
 float gz_bias = 0;
 float vx = 0, vy = 0, vz = 0;
 
-//servo settings
+//servo settings ---
 Servo myservo;
 const int Servopin = 9; //PB1
 int front_angle = 70; //initial position of the fan
@@ -20,28 +22,28 @@ int servoAngle = front_angle;
 const int turn_left =0 ;
 const int turn_right =140;
 
-// Fan settings
+// Fan settings ---
 const int fan1Pin = 5; // PD5 trust
 const int fan2Pin = 6; // PD6 lift
 int fanSpeedtrust = 255; // (0-255)
 int fanSpeedlift = 255; //(0-255)
 
-// Ultrasonic sensor setting
-//(Sensor 1)
+// Ultrasonic sensor setting ---
+  //(Sensor 1)-
 const int trigPin = 11;    //PB3
 const int echoPin = 2;     //PD2
 
-//(Sensor 2)
+  //(Sensor 2)-
 const int trigPin2 = 13; // PB5
 const int echoPin2 = 3;  // PD3
 
-
+//creating the Newping object to get accurate measuremnts
 const int MAX_DISTANCE =200;
 NewPing sonar1(trigPin, echoPin, MAX_DISTANCE);
 NewPing sonar2(trigPin2, echoPin2, MAX_DISTANCE);
 
 
-// Angular Control test setting
+// Angular Control test setting ---
 const int slow_down_distance = 70; //from max fan to lower fan
 const int Stop_distance =25;
 const float yawOffset = 180.0; // 90 degrees clockwise rotation
@@ -71,14 +73,17 @@ void setup() {
   myservo.attach(Servopin); // Attach servo to proper pin
   gz_bias = calculate_gz_bias(); // Calculate error for the Z-axis gyroscope
 
-  // Set up the fan control pins as outputs
+  // Set up the fan control pins as outputs ---
   pinMode(fan1Pin, OUTPUT);
   pinMode(fan2Pin, OUTPUT);
 
-  // Set initial fan speeds
+  // Set initial fan speeds ---
   analogWrite(fan1Pin, fanSpeedtrust);
   analogWrite(fan2Pin, fanSpeedlift);
 
+
+  // --- not of any use since we are using Newping library ---
+  
   // // Set up ultrasonic sensor pins
   // pinMode(trigPin, OUTPUT);
   // pinMode(echoPin, INPUT);
@@ -87,7 +92,7 @@ void setup() {
   // pinMode(trigPin2, OUTPUT);
   // pinMode(echoPin2, INPUT);
   
-
+  // --- variable to control to control navigation timing ---
   tempo=millis();
   tempo2=millis();
 
@@ -96,15 +101,16 @@ float ax_prev = 0, ay_prev = 0, az_prev = 0;
 
 void loop() {
 
-  bug=true;
+  bug=true;//debuging tool 
 
-  // Find yaw
+  // Find yaw ---
   Wire.beginTransmission(MPU_addr);
   Wire.write(0x43);  // Starting with register 0x43 (GYRO_XOUT_H)
   Wire.endTransmission(false);
   Wire.requestFrom(MPU_addr, 6, true);  // Request 6 registers
 
-  // Check if I2C timeout occurred
+  // Check if I2C timeout occurred ---
+  
   if (Wire.getWireTimeoutFlag()) {
     Wire.end();
     delay(10);
@@ -121,7 +127,7 @@ void loop() {
   yaw += gz_dps * dt;
   timer = millis();
 
-  // Get distance from the 2 ultrasonic sensors
+  // Get distance from the 2 ultrasonic sensors ---
   int distance = getDistance(sonar1);
   int distance2 = getDistance(sonar2);
 
@@ -139,11 +145,6 @@ void loop() {
 //    Serial.print("| Distance 2 : ");
 //    Serial.println(distance2);
 
-    
-    
-
-    //dont mess up peno ----------------------------------------------------------------------------------------------------------------------------------
-
 
     if(abs(yaw)<20 && distance < 45 && distance != 0){ // distance < 42
 
@@ -159,6 +160,8 @@ void loop() {
 
         turnRight=true;
 
+          // --- Speed control to navigate turns ---
+          
 //        if(tempo+1000<millis() && turnRight==true && distance<10 && distance !=0)  {
 //
 //            fanSpeedlift = 255; 
@@ -169,7 +172,7 @@ void loop() {
 //            fanSpeedtrust = 220;
 //          }             
 
-        //need it too know when to turn again
+        //need it too know when to turn again ---
 
         bug=false;
 
@@ -188,6 +191,8 @@ void loop() {
 
 
         turnLeft=true;
+        
+         // --- Speed control to navigate turns ---
 
 //        if(tempo+1000<millis() && turnLeft==true && distance<10 && distance !=0 )  {
 //          
@@ -220,6 +225,8 @@ void loop() {
       
     }
 
+      // --- control for case scenario where the hovercraft get stuck in an corner ---
+
 //     if ((abs(yaw)>30 && abs(yaw)<50 && distance<10 && distance2<10 && distance!=0 && distance2!=0)){
 //      
 //      fanSpeedlift = 0; 
@@ -229,25 +236,21 @@ void loop() {
 //    }
     
 
-    
-    //dont mess up peno ----------------------------------------------------------------------------------------------------------------------------------
-    
+    // --- reset the direction to being straight ---
     if(turnLeft==false && turnRight==false){
       servoAngle = front_angle + yaw;      
     }
 
 
-
+    // --- set the angle to the next navigartion point ---
     servoAngle = constrain(servoAngle, 0, 150);
     myservo.write(servoAngle);
 
-    // setup fans
+    // --- setup fans speed ---
     if(tempo3 == 0 || tempo3+2000 < millis() || tempo+3000<millis()){
 
     fanSpeedlift=255 ; 
     fanSpeedtrust=255; 
-
-
       
     }
 
@@ -258,11 +261,14 @@ void loop() {
 
 }
 
+// ------ function to fix the IMU drifting ------
+
 float calculate_gz_bias() {
   int samples = 2000; // Increase the number of samples to improve accuracy
   float sum = 0;
 
-  // Discard initial readings to let the sensor stabilize
+  // take a sample of the drifting for 2 seconds and set it up as the IMU bias 
+  
   for (int i = 0; i < 10; i++) {
     Wire.beginTransmission(MPU_addr);
     Wire.write(0x47);  // GYRO_ZOUT_H
@@ -280,12 +286,13 @@ float calculate_gz_bias() {
     gz = Wire.read() << 8 | Wire.read();   // GYRO_ZOUT
 
     sum += gz;
-    delay(2); // Increase delay between samples to give the sensor more time to stabilize
+    delay(2); 
   }
 
   return sum / samples / 131.0;
 }
 
+// ------ Funtion to measure the distance of the Utrasonic ------
 unsigned int getDistance(NewPing& sonar) {
   unsigned int distance = sonar.ping_cm(); // Get the distance in centimeters
   return distance;
